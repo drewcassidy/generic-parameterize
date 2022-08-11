@@ -11,7 +11,7 @@ use syn::punctuated::Punctuated;
 use syn::token::{Bracket, Comma, Paren, Token};
 use Default;
 use std::collections::HashMap;
-use std::fmt::format;
+use std::fmt::{Display, format, Formatter, write};
 use std::ops::Deref;
 use std::string::ParseError;
 use itertools::Itertools;
@@ -101,56 +101,78 @@ fn ident_safe(expr: &Expr) -> String {
     }
 }
 
-enum ParameterType {
-    ValueParam,
-    TypeParam,
+enum ParameterEntry {
+    Lit { lit: Lit },
+    Type { ty: Type },
 }
 
-struct ParameterEntry {
-    ty: ParameterType,
+impl ParameterEntry {
+    fn from_expr(expr: &Expr) -> Result<Self, syn::Error> {
+        return if let Expr::Lit(lit) = expr {
+            Ok(Self::Lit { lit: lit.lit.clone() })
+        } else {
+            Err(syn::Error::new(expr.span(), "Expression is not a literal"))
+        };
+    }
+}
+
+impl ToTokens for ParameterEntry {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            ParameterEntry::Lit { lit } => { lit.to_tokens(tokens); }
+            ParameterEntry::Type { ty } => { ty.to_tokens(tokens); }
+        }
+    }
+}
+
+impl Display for ParameterEntry {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParameterEntry::Lit { lit } => { write!(f, "{}", lit_to_ident_safe(lit)) }
+            ParameterEntry::Type { ty } => { write!(f, "{}", type_to_ident_safe(ty)) }
+        }
+    }
+}
+
+struct ParameterEntryList {
     ident: Ident,
-    values: Vec<Expr>,
+    entries: Vec<ParameterEntry>,
 }
 
-impl Parse for ParameterEntry {
+impl Parse for ParameterEntryList {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let ident = input.parse::<syn::Ident>()?;
         input.parse::<syn::token::Eq>()?;
 
         return if input.peek(Paren) {
-            let tt = input.parse::<ExprTuple>()?;
-            let mut types = Vec::<Expr>::new();
-            for ty in &tt.elems {
-                types.push(ty.clone());
-            }
-            Ok(Self { ty: ParameterType::TypeParam, ident, values: types })
+            let tt = input.parse::<TypeTuple>()?;
+            let entries =
+                tt.elems.iter()
+                    .map(|ty| ParameterEntry::Type { ty: ty.clone() })
+                    .collect();
+
+            Ok(Self { ident, entries })
         } else if input.peek(Bracket) {
             let exprs = input.parse::<ExprArray>()?;
-
-            let mut values = Vec::<Expr>::new();
-            for v in &exprs.elems {
-                if let Expr::Lit(lit) = v {
-                    values.push(v.clone());
-                } else {
-                    return Err(syn::Error::new(v.span(), "Value array must only contain literals"));
-                }
-            }
-
-            Ok(Self { ty: ParameterType::ValueParam, ident, values })
+            let entries: Result<Vec<ParameterEntry>, syn::Error> =
+                exprs.elems.iter()
+                    .map(|e| { Ok(ParameterEntry::from_expr(e)?) })
+                    .collect();
+            Ok(Self { ident, entries: entries? })
         } else {
             Err(syn::Error::new(input.span(), "Unknown parameter entry"))
         };
     }
 }
 
-struct ParameterList {
-    params: HashMap<Ident, ParameterEntry>,
+struct ParameterMatrix {
+    params: HashMap<Ident, ParameterEntryList>,
 }
 
-impl Parse for ParameterList {
+impl Parse for ParameterMatrix {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut result = ParameterList { params: Default::default() };
-        let entries = Punctuated::<ParameterEntry, Comma>::parse_terminated(input)?;
+        let mut result = ParameterMatrix { params: Default::default() };
+        let entries = Punctuated::<ParameterEntryList, Comma>::parse_terminated(input)?;
 
         for entry in entries {
             let ident = &entry.ident;
@@ -167,9 +189,9 @@ impl Parse for ParameterList {
 #[proc_macro_attribute]
 pub fn parameterize(_args: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as ItemFn);
-    let mut args = parse_macro_input!(_args as ParameterList);
+    let mut args = parse_macro_input!(_args as ParameterMatrix);
 
-    let mut gparam_token_matrix = Vec::<Vec::<Expr>>::new();
+    let mut gparam_matrix = Vec::<Vec::<ParameterEntry>>::new();
 
     for gparam in &input.sig.generics.params {
         let ident = match gparam {
@@ -181,7 +203,7 @@ pub fn parameterize(_args: TokenStream, input: TokenStream) -> TokenStream {
         let entry = args.params.remove(ident)
             .expect(&*format!("Generic parameter {} is not parametrized!", ident));
 
-        gparam_token_matrix.push(entry.values);
+        gparam_matrix.push(entry.entries);
 
         println!("doing stuff with {}", ident);
     }
@@ -192,10 +214,10 @@ pub fn parameterize(_args: TokenStream, input: TokenStream) -> TokenStream {
     let mod_ident = input.sig.ident.clone();
     let mut fns = Vec::<syn::ItemFn>::new();
 
-    for params in gparam_token_matrix.iter().multi_cartesian_product() {
+    for params in gparam_matrix.iter().multi_cartesian_product() {
         // println!("{:?}", gparam_token_matrix);
         let fn_ident = input.sig.ident.clone();
-        let fn_ident = format_ident!("{}_{}",fn_ident, params.iter().map(|a| ident_safe(a.clone())).join("_"));
+        let fn_ident = format_ident!("{}_{}",fn_ident, params.iter().join("_"));
         println!("{}", fn_ident);
         let mut func: syn::ItemFn = syn::parse_quote! {
             #[test]
