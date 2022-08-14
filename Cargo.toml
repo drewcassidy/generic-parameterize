@@ -2,8 +2,10 @@
 name = "generic_parameterize"
 version = "0.0.0"
 authors = ["Andrew Cassidy <drewcassidy@me.com>"]
-description = "A `cargo generate` template for quick-starting a procedural macro crate"
-keywords = ["template", "proc_macro", "procmacro"]
+description = "A test parameterization macro that works on generic arguments"
+keywords = ["template", "proc_macro", "procmacro", "test", "parameterize", "generic"]
+categories = ["development-tools::testing"]
+license = "MPL-2.0"
 edition = "2018"
 
 [lib]
