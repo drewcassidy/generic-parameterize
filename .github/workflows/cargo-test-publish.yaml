@@ -1,0 +1,54 @@
+name: Build and Release
+on: [ push ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout Repo
+        uses: actions/checkout@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+
+      - name: Generate changelog info
+        run: |
+          # todo: make this part of yaclog!
+          pip install yaclog~=1.1
+          yaclog show
+          echo "VERSION_TITLE=$(yaclog show -n)" >> $GITHUB_ENV
+          echo "$(yaclog show -mb)" >> RELEASE.md
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt
+
+      - name: Run Cargo Check
+        run: cargo check
+
+      - name: Run Cargo fmt
+        run: cargo fmt --check
+
+      - name: Run Unit Tests
+        run: cargo test
+
+      - name: Build Crate
+        run: cargo build --release
+
+      - name: Publish to crates.io
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+        run: cargo publish --token ${{ secrets.CARGO_TOKEN }}
+
+      - name: Publish to Github
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Version ${{ env.VERSION_TITLE }}
+          body_path: RELEASE.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
