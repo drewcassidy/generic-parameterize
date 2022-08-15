@@ -1,6 +1,6 @@
 [package]
 name = "generic_parameterize"
-version = "0.0.0"
+version = "0.1.0"
 authors = ["Andrew Cassidy <drewcassidy@me.com>"]
 description = "A test parameterization macro that works on generic arguments"
 keywords = ["template", "proc_macro", "procmacro", "test", "parameterize", "generic"]
