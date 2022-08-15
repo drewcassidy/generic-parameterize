@@ -19,7 +19,7 @@ jobs:
           pip install yaclog~=1.1
           yaclog show
           echo "VERSION_TITLE=$(yaclog show -n)" >> $GITHUB_ENV
-          echo "$(yaclog show -mb)" >> RELEASE.md
+          echo "$(yaclog show -mb)" >> /tmp/RELEASE.md
 
       - name: Setup Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -45,6 +45,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           name: Version ${{ env.VERSION_TITLE }}
-          body_path: RELEASE.md
+          body_path: /tmp/RELEASE.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
