@@ -28,19 +28,15 @@ jobs:
           toolchain: stable
           components: rustfmt
 
-      - name: Run Cargo Check
-        run: cargo check
-
-      - name: Run Cargo fmt
-        run: cargo fmt --check
+      - name: Run Checks
+        run: |
+          cargo check
+          cargo fmt --check
 
       - name: Run Unit Tests
         run: cargo test
 
-      - name: Build Crate
-        run: cargo build --release
-
-      - name: Publish to crates.io
+      - name: Publish to Crates.io
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
         run: cargo publish --token ${{ secrets.CARGO_TOKEN }}
 
