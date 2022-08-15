@@ -188,7 +188,6 @@ impl Parse for ParameterMatrix {
 /// expands to:
 ///
 /// ```ignore
-/// #[cfg(test)]
 /// mod test_array {
 ///     use std::println;
 ///     fn test_array<T: Default, const N : usize>() where [T;N]: Default + std::fmt::Debug{
