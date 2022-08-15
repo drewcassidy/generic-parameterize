@@ -6,10 +6,9 @@
 
 //! This crate provides the [parameterize] macro for expanding generic test functions
 
-use Default;
 use itertools::Itertools;
-use proc_macro2;
 use proc_macro::TokenStream;
+use proc_macro2;
 use quote::{format_ident, ToTokens};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -17,8 +16,8 @@ use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Bracket, Comma, Paren};
-use syn::{Expr, Lit, Type, Ident, parse_macro_input, ItemFn, TypeBareFn};
-
+use syn::{parse_macro_input, Expr, Ident, ItemFn, Lit, Type, TypeBareFn};
+use Default;
 
 /// Generate an identifier-safe string form of a literal
 fn lit_to_ident_safe(lit: &Lit) -> String {
@@ -28,19 +27,18 @@ fn lit_to_ident_safe(lit: &Lit) -> String {
 /// Generate an identifier-safe string form of a type name
 fn type_to_ident_safe(ty: &Type) -> String {
     match ty {
-        Type::Array(syn::TypeArray { elem, len, .. }) => {
-            match &len {
-                Expr::Lit(e) => {
-                    format!("{}x{}", type_to_ident_safe(elem), lit_to_ident_safe(&e.lit))
-                }
-                _ => format! {"{}Array", type_to_ident_safe(elem)}
+        Type::Array(syn::TypeArray { elem, len, .. }) => match &len {
+            Expr::Lit(e) => {
+                format!("{}x{}", type_to_ident_safe(elem), lit_to_ident_safe(&e.lit))
             }
-        }
-        Type::BareFn(_) => { "Fn".to_string() }
-        Type::Never(_) => { "Never".to_string() }
+            _ => format! {"{}Array", type_to_ident_safe(elem)},
+        },
+        Type::BareFn(_) => "Fn".to_string(),
+        Type::Never(_) => "Never".to_string(),
         Type::Path(syn::TypePath { path, .. }) => {
             let ident = path.get_ident().expect("Expected an identifier");
-            ident.to_string()
+            ident
+                .to_string()
                 .replace("::", "_")
                 .replace("<", "_")
                 .replace(">", "")
@@ -51,8 +49,8 @@ fn type_to_ident_safe(ty: &Type) -> String {
         Type::Slice(syn::TypeSlice { elem, .. }) => {
             format!("{}Slice", type_to_ident_safe(elem))
         }
-        Type::Tuple(_) => { "Tuple".to_string() }
-        _ => { "Unknown".to_string() }
+        Type::Tuple(_) => "Tuple".to_string(),
+        _ => "Unknown".to_string(),
     }
 }
 
@@ -65,7 +63,9 @@ enum ParameterEntry {
 impl ParameterEntry {
     fn from_expr(expr: &Expr) -> Result<Self, syn::Error> {
         return if let Expr::Lit(lit) = expr {
-            Ok(Self::Lit { lit: lit.lit.clone() })
+            Ok(Self::Lit {
+                lit: lit.lit.clone(),
+            })
         } else {
             Err(syn::Error::new(expr.span(), "Expression is not a literal"))
         };
@@ -75,8 +75,12 @@ impl ParameterEntry {
 impl ToTokens for ParameterEntry {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         match self {
-            ParameterEntry::Lit { lit } => { lit.to_tokens(tokens); }
-            ParameterEntry::Type { ty } => { ty.to_tokens(tokens); }
+            ParameterEntry::Lit { lit } => {
+                lit.to_tokens(tokens);
+            }
+            ParameterEntry::Type { ty } => {
+                ty.to_tokens(tokens);
+            }
         }
     }
 }
@@ -84,8 +88,12 @@ impl ToTokens for ParameterEntry {
 impl Display for ParameterEntry {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ParameterEntry::Lit { lit } => { write!(f, "{}", lit_to_ident_safe(lit)) }
-            ParameterEntry::Type { ty } => { write!(f, "{}", type_to_ident_safe(ty)) }
+            ParameterEntry::Lit { lit } => {
+                write!(f, "{}", lit_to_ident_safe(lit))
+            }
+            ParameterEntry::Type { ty } => {
+                write!(f, "{}", type_to_ident_safe(ty))
+            }
         }
     }
 }
@@ -104,19 +112,24 @@ impl Parse for ParameterEntryList {
 
         return if input.peek(Paren) {
             let tt = input.parse::<syn::TypeTuple>()?;
-            let entries =
-                tt.elems.iter()
-                    .map(|ty| ParameterEntry::Type { ty: ty.clone() })
-                    .collect();
+            let entries = tt
+                .elems
+                .iter()
+                .map(|ty| ParameterEntry::Type { ty: ty.clone() })
+                .collect();
 
             Ok(Self { ident, entries })
         } else if input.peek(Bracket) {
             let exprs = input.parse::<syn::ExprArray>()?;
-            let entries: Result<Vec<ParameterEntry>, syn::Error> =
-                exprs.elems.iter()
-                    .map(|e| { Ok(ParameterEntry::from_expr(e)?) })
-                    .collect();
-            Ok(Self { ident, entries: entries? })
+            let entries: Result<Vec<ParameterEntry>, syn::Error> = exprs
+                .elems
+                .iter()
+                .map(|e| Ok(ParameterEntry::from_expr(e)?))
+                .collect();
+            Ok(Self {
+                ident,
+                entries: entries?,
+            })
         } else {
             Err(syn::Error::new(input.span(), "Unknown parameter entry"))
         };
@@ -131,7 +144,9 @@ struct ParameterMatrix {
 
 impl Parse for ParameterMatrix {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut result = ParameterMatrix { params: Default::default() };
+        let mut result = ParameterMatrix {
+            params: Default::default(),
+        };
         let entries = Punctuated::<ParameterEntryList, Comma>::parse_terminated(input)?;
 
         for entry in entries {
@@ -200,13 +215,17 @@ pub fn parameterize(_args: TokenStream, input: TokenStream) -> TokenStream {
 
     for param in &input.sig.generics.params {
         let ident = match param {
-            syn::GenericParam::Type(t) => { &t.ident }
-            syn::GenericParam::Const(c) => { &c.ident }
-            syn::GenericParam::Lifetime(_) => { panic!("Lifetimes are unsupported"); }
+            syn::GenericParam::Type(t) => &t.ident,
+            syn::GenericParam::Const(c) => &c.ident,
+            syn::GenericParam::Lifetime(_) => {
+                panic!("Lifetimes are unsupported");
+            }
         };
 
-        let entry = args.params.remove(ident)
-            .expect(&*format!("Generic parameter {} is not parameterized!", ident));
+        let entry = args.params.remove(ident).expect(&*format!(
+            "Generic parameter {} is not parameterized!",
+            ident
+        ));
 
         param_matrix.push(entry.entries);
     }

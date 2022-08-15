@@ -4,9 +4,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+use generic_parameterize::parameterize;
 use std::any::TypeId;
 use std::collections::HashSet;
-use generic_parameterize::parameterize;
 
 use std::process::{ExitCode, Termination};
 
@@ -18,14 +18,18 @@ pub struct Terminator<T> {
 }
 
 impl<T> Termination for Terminator<T> {
-    fn report(self) -> ExitCode { ExitCode::SUCCESS }
+    fn report(self) -> ExitCode {
+        ExitCode::SUCCESS
+    }
 }
 
 /// Generates 6 parameterized tests using a matrix of types and constants
 #[parameterize(A = (i32, f32), B = [5, 6, 7])]
 #[test]
 fn test_parameterization_matrix<A: 'static, const B: usize>() -> Terminator<(TypeId, usize)> {
-    return Terminator { data: Box::new((TypeId::of::<A>(), B)) };
+    return Terminator {
+        data: Box::new((TypeId::of::<A>(), B)),
+    };
 }
 
 /// Tests to make sure the previous test expanded to the correct subtests
