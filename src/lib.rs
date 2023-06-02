@@ -6,6 +6,9 @@
 
 //! This crate provides the [parameterize] macro for expanding generic test functions
 
+mod fmt;
+mod params;
+
 use itertools::Itertools;
 use proc_macro::TokenStream;
 use proc_macro2;
