@@ -6,6 +6,7 @@
 
 //! This crate provides the [parameterize] macro for expanding generic test functions
 
+mod extract;
 mod fmt;
 mod params;
 
