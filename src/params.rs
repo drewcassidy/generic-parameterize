@@ -13,7 +13,7 @@ use syn::spanned::Spanned;
 use syn::token::{Bracket, Comma, Paren};
 use syn::{Expr, Ident, Lit, Type};
 
-trait Param: ToTokens + Clone {
+pub(crate) trait Param: ToTokens {
     fn ident_safe(&self) -> String;
 }
 
@@ -54,13 +54,15 @@ impl Param for Type {
     }
 }
 
-trait ParamList {
+pub(crate) trait ParamList {
     fn try_parse(input: ParseStream) -> Option<syn::Result<Self>>
     where
         Self: Sized;
+
+    fn params<'a>(&self) -> Box<dyn Iterator<Item = &dyn Param>>;
 }
 
-impl ParamList for Vec<Type> {
+impl<'a> ParamList for Vec<Type> {
     fn try_parse(input: ParseStream) -> Option<syn::Result<Self>> {
         if input.peek(Paren) {
             fn parse(input: ParseStream) -> syn::Result<Vec<Type>> {
@@ -73,9 +75,13 @@ impl ParamList for Vec<Type> {
             None
         }
     }
+
+    fn params(&self) -> Box<dyn Iterator<Item = &dyn Param>> {
+        Box::new(self.iter().map(|t| t as &dyn Param))
+    }
 }
 
-impl ParamList for Vec<Lit> {
+impl<'a> ParamList for Vec<Lit> {
     fn try_parse(input: ParseStream) -> Option<syn::Result<Self>> {
         if input.peek(Bracket) {
             fn expr_to_lit(expr: &Expr) -> syn::Result<Lit> {
@@ -95,18 +101,22 @@ impl ParamList for Vec<Lit> {
             None
         }
     }
+
+    fn params(&self) -> Box<dyn Iterator<Item = &dyn Param>> {
+        Box::new(self.iter().map(|l| l as &dyn Param))
+    }
 }
 
 /// One argument in the input to the parameterize macro
 #[derive(Clone)]
-enum Argument {
+pub(crate) enum Argument {
     TypeList(Ident, Vec<Type>),
     LitList(Ident, Vec<Lit>),
 }
 
 impl Argument {
     /// a paramlist or None. for filter-mapping the list of args
-    fn as_param_list(&self) -> Option<(Ident, Box<dyn ParamList>)> {
+    pub fn as_param_list(&self) -> Option<(Ident, Box<dyn ParamList>)> {
         return match self {
             TypeList(id, tl) => Some((id.clone(), Box::new(tl.clone()))),
             LitList(id, ll) => Some((id.clone(), Box::new(ll.clone()))),
@@ -120,7 +130,7 @@ impl Parse for Argument {
         let ident = input.parse::<syn::Ident>()?;
         input.parse::<syn::token::Eq>()?;
 
-        return if let Some(res) = Vec::<Type>::try_parse(input) {
+        if let Some(res) = Vec::<Type>::try_parse(input) {
             Ok(TypeList(ident, res?))
         } else if let Some(res) = Vec::<Lit>::try_parse(input) {
             Ok(LitList(ident, res?))
@@ -129,13 +139,13 @@ impl Parse for Argument {
                 input.span(),
                 "Unexpected token while parsing macro argument",
             ))
-        };
+        }
     }
 }
 
 /// A list of arguments input to the macro
-struct ArgumentList {
-    args: Vec<Argument>,
+pub(crate) struct ArgumentList {
+    pub args: Vec<Argument>,
 }
 
 impl Parse for ArgumentList {
