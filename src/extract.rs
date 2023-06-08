@@ -4,14 +4,32 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-pub(crate) trait Extract<T, F: FnMut(&T) -> bool> {
+pub(crate) trait Extract {
+    type Item;
     /// Removes all elements of `self` for which `f(&e)` returns `true`, and returns them as an iterator
-    fn extract(&mut self, f: F) -> ExtractIterator<T, F>;
+    fn extract<F: FnMut(&Self::Item) -> bool>(&mut self, f: F) -> ExtractIterator<Self::Item, F>;
+
+    fn extract_map<U, F: FnMut(&Self::Item) -> Option<U>>(
+        &mut self,
+        f: F,
+    ) -> ExtractMap<Self::Item, U, F>;
 }
 
-impl<T, F: FnMut(&T) -> bool> Extract<T, F> for Vec<T> {
-    fn extract(&mut self, f: F) -> ExtractIterator<T, F> {
+impl<T> Extract for Vec<T> {
+    type Item = T;
+    fn extract<F: FnMut(&Self::Item) -> bool>(&mut self, f: F) -> ExtractIterator<Self::Item, F> {
         ExtractIterator {
+            vec: self,
+            f,
+            index: 0,
+        }
+    }
+
+    fn extract_map<U, F: FnMut(&Self::Item) -> Option<U>>(
+        &mut self,
+        f: F,
+    ) -> ExtractMap<Self::Item, U, F> {
+        ExtractMap {
             vec: self,
             f,
             index: 0,
@@ -32,6 +50,28 @@ impl<'a, T, F: FnMut(&T) -> bool> Iterator for ExtractIterator<'a, T, F> {
         while self.index < self.vec.len() {
             if (self.f)(self.vec.get(self.index)?) {
                 return Some(self.vec.remove(self.index));
+            }
+            self.index += 1;
+        }
+
+        None
+    }
+}
+
+pub(crate) struct ExtractMap<'a, T, U, F: FnMut(&T) -> Option<U>> {
+    vec: &'a mut Vec<T>,
+    f: F,
+    index: usize,
+}
+
+impl<'a, T, U, F: FnMut(&T) -> Option<U>> Iterator for ExtractMap<'a, T, U, F> {
+    type Item = U;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.index < self.vec.len() {
+            if let Some(res) = (self.f)(self.vec.get(self.index)?) {
+                Some(self.vec.remove(self.index));
+                return Some(res);
             }
             self.index += 1;
         }

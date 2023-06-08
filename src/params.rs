@@ -5,7 +5,9 @@
  */
 
 use crate::params::Argument::{LitList, TypeList};
+use proc_macro2::TokenStream;
 use quote::ToTokens;
+use std::fmt::{Display, Formatter};
 use std::vec::Vec;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
@@ -13,54 +15,73 @@ use syn::spanned::Spanned;
 use syn::token::{Bracket, Comma, Paren};
 use syn::{Expr, Ident, Lit, Type};
 
-trait Param: ToTokens + Clone {
-    fn ident_safe(&self) -> String;
+pub(crate) enum Param {
+    Type(Ident, Type),
+    Lit(Ident, Lit),
 }
 
-impl Param for Lit {
-    fn ident_safe(&self) -> String {
-        self.to_token_stream().to_string().replace(".", "p")
-    }
-}
-
-impl Param for Type {
-    fn ident_safe(&self) -> String {
+impl ToTokens for Param {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
-            Type::Array(syn::TypeArray { elem, len, .. }) => match &len {
-                Expr::Lit(e) => {
-                    format!("{}x{}", elem.ident_safe(), &e.lit.ident_safe())
-                }
-                _ => format! {"{}Array", elem.ident_safe()},
-            },
-            Type::BareFn(_) => "Fn".to_string(),
-            Type::Never(_) => "Never".to_string(),
-            Type::Path(syn::TypePath { path, .. }) => {
-                let ident = path.get_ident().expect("Expected an identifier");
-                ident
-                    .to_string()
-                    .replace("::", "_")
-                    .replace("<", "_")
-                    .replace(">", "")
-            }
-            Type::Reference(syn::TypeReference { elem, .. }) => {
-                format!("{}Ref", elem.ident_safe())
-            }
-            Type::Slice(syn::TypeSlice { elem, .. }) => {
-                format!("{}Slice", elem.ident_safe())
-            }
-            Type::Tuple(_) => "Tuple".to_string(),
-            _ => "Unknown".to_string(),
+            Param::Type(_, ty) => ty.to_tokens(tokens),
+            Param::Lit(_, lit) => lit.to_tokens(tokens),
         }
     }
 }
 
-trait ParamList {
+impl Display for Param {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.ident_safe().as_str())
+    }
+}
+
+impl Param {
+    fn ident_safe(&self) -> String {
+        fn lit_ident_safe(lit: &Lit) -> String {
+            lit.to_token_stream().to_string().replace(".", "p")
+        }
+        fn type_ident_safe(ty: &Type) -> String {
+            match ty {
+                Type::Array(syn::TypeArray { elem, len, .. }) => match &len {
+                    Expr::Lit(e) => {
+                        format!("{}x{}", type_ident_safe(elem), lit_ident_safe(&e.lit))
+                    }
+                    _ => format! {"{}Array", type_ident_safe(elem)},
+                },
+                Type::BareFn(_) => "Fn".to_string(),
+                Type::Never(_) => "Never".to_string(),
+                Type::Path(syn::TypePath { path, .. }) => {
+                    let ident = path.get_ident().expect("Expected an identifier");
+                    ident
+                        .to_string()
+                        .replace("::", "_")
+                        .replace("<", "_")
+                        .replace(">", "")
+                }
+                Type::Reference(syn::TypeReference { elem, .. }) => {
+                    format!("{}Ref", type_ident_safe(elem))
+                }
+                Type::Slice(syn::TypeSlice { elem, .. }) => {
+                    format!("{}Slice", type_ident_safe(elem))
+                }
+                Type::Tuple(_) => "Tuple".to_string(),
+                _ => "Unknown".to_string(),
+            }
+        }
+        match self {
+            Param::Type(_, ty) => type_ident_safe(ty),
+            Param::Lit(_, lit) => lit_ident_safe(lit),
+        }
+    }
+}
+
+pub(crate) trait ParamList {
     fn try_parse(input: ParseStream) -> Option<syn::Result<Self>>
     where
         Self: Sized;
 }
 
-impl ParamList for Vec<Type> {
+impl<'a> ParamList for Vec<Type> {
     fn try_parse(input: ParseStream) -> Option<syn::Result<Self>> {
         if input.peek(Paren) {
             fn parse(input: ParseStream) -> syn::Result<Vec<Type>> {
@@ -75,7 +96,7 @@ impl ParamList for Vec<Type> {
     }
 }
 
-impl ParamList for Vec<Lit> {
+impl<'a> ParamList for Vec<Lit> {
     fn try_parse(input: ParseStream) -> Option<syn::Result<Self>> {
         if input.peek(Bracket) {
             fn expr_to_lit(expr: &Expr) -> syn::Result<Lit> {
@@ -99,20 +120,9 @@ impl ParamList for Vec<Lit> {
 
 /// One argument in the input to the parameterize macro
 #[derive(Clone)]
-enum Argument {
+pub(crate) enum Argument {
     TypeList(Ident, Vec<Type>),
     LitList(Ident, Vec<Lit>),
-}
-
-impl Argument {
-    /// a paramlist or None. for filter-mapping the list of args
-    fn as_param_list(&self) -> Option<(Ident, Box<dyn ParamList>)> {
-        return match self {
-            TypeList(id, tl) => Some((id.clone(), Box::new(tl.clone()))),
-            LitList(id, ll) => Some((id.clone(), Box::new(ll.clone()))),
-            _ => None,
-        };
-    }
 }
 
 impl Parse for Argument {
@@ -120,7 +130,7 @@ impl Parse for Argument {
         let ident = input.parse::<syn::Ident>()?;
         input.parse::<syn::token::Eq>()?;
 
-        return if let Some(res) = Vec::<Type>::try_parse(input) {
+        if let Some(res) = Vec::<Type>::try_parse(input) {
             Ok(TypeList(ident, res?))
         } else if let Some(res) = Vec::<Lit>::try_parse(input) {
             Ok(LitList(ident, res?))
@@ -129,13 +139,13 @@ impl Parse for Argument {
                 input.span(),
                 "Unexpected token while parsing macro argument",
             ))
-        };
+        }
     }
 }
 
 /// A list of arguments input to the macro
-struct ArgumentList {
-    args: Vec<Argument>,
+pub(crate) struct ArgumentList {
+    pub args: Vec<Argument>,
 }
 
 impl Parse for ArgumentList {

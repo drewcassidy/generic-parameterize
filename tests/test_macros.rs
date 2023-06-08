@@ -37,7 +37,7 @@ fn test_parameterization_matrix<A: 'static, const B: usize>() -> Terminator<(Typ
 fn metatest_parameterization_matrix() {
     let mut results: HashSet<_> = test_parameterization_matrix::manifest
         .iter()
-        .map(|f| *f().data)
+        .map(|f| (*f)().data)
         .collect();
 
     assert_eq!(results.len(), 6);
