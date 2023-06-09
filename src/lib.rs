@@ -190,7 +190,7 @@ pub fn parameterize(_args: TokenStream, input: TokenStream) -> TokenStream {
         fn_token: Default::default(),
         paren_token: Default::default(),
         inputs: Default::default(),
-        variadic: inner.sig.variadic.clone(),
+        variadic: None,
         output: inner.sig.output.clone(),
     };
     let wrapper_len = wrappers.len();
