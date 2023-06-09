@@ -4,15 +4,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-use crate::params::Argument::{LitList, TypeList};
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::fmt::{Display, Formatter};
 use std::vec::Vec;
-use syn::parse::{Parse, ParseStream};
-use syn::punctuated::Punctuated;
+use syn::parse::ParseStream;
 use syn::spanned::Spanned;
-use syn::token::{Bracket, Comma, Paren};
+use syn::token::{Bracket, Paren};
 use syn::{Expr, Ident, Lit, Type};
 
 pub(crate) enum Param {
@@ -115,45 +113,5 @@ impl<'a> ParamList for Vec<Lit> {
         } else {
             None
         }
-    }
-}
-
-/// One argument in the input to the parameterize macro
-#[derive(Clone)]
-pub(crate) enum Argument {
-    TypeList(Ident, Vec<Type>),
-    LitList(Ident, Vec<Lit>),
-}
-
-impl Parse for Argument {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let ident = input.parse::<syn::Ident>()?;
-        input.parse::<syn::token::Eq>()?;
-
-        if let Some(res) = Vec::<Type>::try_parse(input) {
-            Ok(TypeList(ident, res?))
-        } else if let Some(res) = Vec::<Lit>::try_parse(input) {
-            Ok(LitList(ident, res?))
-        } else {
-            Err(syn::Error::new(
-                input.span(),
-                "Unexpected token while parsing macro argument",
-            ))
-        }
-    }
-}
-
-/// A list of arguments input to the macro
-pub(crate) struct ArgumentList {
-    pub args: Vec<Argument>,
-}
-
-impl Parse for ArgumentList {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let args: Vec<Argument> = Punctuated::<Argument, Comma>::parse_terminated(input)?
-            .iter()
-            .cloned()
-            .collect();
-        Ok(Self { args })
     }
 }

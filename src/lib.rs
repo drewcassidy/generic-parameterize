@@ -11,12 +11,55 @@ mod fmt;
 mod params;
 
 use crate::extract::Extract;
-use crate::params::{Argument, ArgumentList, Param};
+use crate::params::{Param, ParamList};
 use itertools::Itertools;
 use proc_macro::TokenStream;
 use quote::{format_ident, ToTokens};
-use syn::{parse_macro_input, GenericParam, ItemFn, TypeBareFn};
+use syn::parse::{Parse, ParseStream};
+use syn::punctuated::Punctuated;
+use syn::token::Comma;
+use syn::{parse_macro_input, Expr, GenericParam, Ident, ItemFn, Lit, Type, TypeBareFn};
 use Default;
+
+/// One argument in the input to the parameterize macro
+#[derive(Clone)]
+pub(crate) enum Argument {
+    TypeList(Ident, Vec<Type>),
+    LitList(Ident, Vec<Lit>),
+}
+
+impl Parse for Argument {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let ident = input.parse::<syn::Ident>()?;
+        input.parse::<syn::token::Eq>()?;
+
+        if let Some(res) = Vec::<Type>::try_parse(input) {
+            Ok(Argument::TypeList(ident, res?))
+        } else if let Some(res) = Vec::<Lit>::try_parse(input) {
+            Ok(Argument::LitList(ident, res?))
+        } else {
+            Err(syn::Error::new(
+                input.span(),
+                "Unexpected token while parsing macro argument",
+            ))
+        }
+    }
+}
+
+/// A list of arguments input to the macro
+pub(crate) struct ArgumentList {
+    pub args: Vec<Argument>,
+}
+
+impl Parse for ArgumentList {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let args: Vec<Argument> = Punctuated::<Argument, Comma>::parse_terminated(input)?
+            .iter()
+            .cloned()
+            .collect();
+        Ok(Self { args })
+    }
+}
 
 /// Expand a generic test function with the given parameter matrix
 ///
@@ -113,7 +156,7 @@ pub fn parameterize(_args: TokenStream, input: TokenStream) -> TokenStream {
                 })
                 .unwrap_or_else(|| {
                     panic!(
-                        "Multiple parameterizations found for generic parameter {}",
+                        "No parameterization found for generic parameter {}",
                         gp.to_token_stream().to_string()
                     )
                 })
@@ -125,10 +168,13 @@ pub fn parameterize(_args: TokenStream, input: TokenStream) -> TokenStream {
         .multi_cartesian_product()
         .map(|params| {
             let fn_ident = format_ident!("{}_{}", inner.sig.ident, params.iter().join("_"));
+            let fn_body: Expr = syn::parse_quote!(#inner_ident::<#(#params,)*>());
+            let fn_doc = format!(" Wrapper for {}", fn_body.to_token_stream());
             let mut func: ItemFn = syn::parse_quote! {
                 #[allow(non_snake_case)]
+                #[doc = #fn_doc]
                 pub fn #fn_ident() #output {
-                    #inner_ident::<#(#params,)*>()
+                    #fn_body
                 }
             };
 
