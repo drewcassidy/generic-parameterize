@@ -24,7 +24,7 @@ impl<T> Termination for Terminator<T> {
 }
 
 /// Generates 6 parameterized tests using a matrix of types and constants
-#[parameterize(A = (i32, f32), B = [5, 6, 7])]
+#[parameterize(A = (i32, f32), B = [5, 6, 7], fmt = "{fn}_{B}ｘ{A}")]
 #[test]
 fn test_parameterization_matrix<A: 'static, const B: usize>() -> Terminator<(TypeId, usize)> {
     return Terminator {

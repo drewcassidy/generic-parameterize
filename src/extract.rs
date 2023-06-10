@@ -37,6 +37,7 @@ impl<T> Extract for Vec<T> {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct ExtractIterator<'a, T, F: FnMut(&T) -> bool> {
     vec: &'a mut Vec<T>,
     f: F,
@@ -58,6 +59,7 @@ impl<'a, T, F: FnMut(&T) -> bool> Iterator for ExtractIterator<'a, T, F> {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct ExtractMap<'a, T, U, F: FnMut(&T) -> Option<U>> {
     vec: &'a mut Vec<T>,
     f: F,

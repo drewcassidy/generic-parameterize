@@ -7,22 +7,19 @@
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::fmt::{Display, Formatter};
-use std::vec::Vec;
-use syn::parse::ParseStream;
-use syn::spanned::Spanned;
-use syn::token::{Bracket, Paren};
-use syn::{Expr, Ident, Lit, Type};
+use syn::{Expr, Lit, Type};
 
+#[derive(Clone)]
 pub(crate) enum Param {
-    Type(Ident, Type),
-    Lit(Ident, Lit),
+    Type(Type),
+    Lit(Lit),
 }
 
 impl ToTokens for Param {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
-            Param::Type(_, ty) => ty.to_tokens(tokens),
-            Param::Lit(_, lit) => lit.to_tokens(tokens),
+            Param::Type(ty) => ty.to_tokens(tokens),
+            Param::Lit(lit) => lit.to_tokens(tokens),
         }
     }
 }
@@ -67,51 +64,8 @@ impl Param {
             }
         }
         match self {
-            Param::Type(_, ty) => type_ident_safe(ty),
-            Param::Lit(_, lit) => lit_ident_safe(lit),
-        }
-    }
-}
-
-pub(crate) trait ParamList {
-    fn try_parse(input: ParseStream) -> Option<syn::Result<Self>>
-    where
-        Self: Sized;
-}
-
-impl<'a> ParamList for Vec<Type> {
-    fn try_parse(input: ParseStream) -> Option<syn::Result<Self>> {
-        if input.peek(Paren) {
-            fn parse(input: ParseStream) -> syn::Result<Vec<Type>> {
-                let tt = input.parse::<syn::TypeTuple>()?;
-                let entries: Vec<Type> = tt.elems.iter().cloned().collect();
-                Ok(entries)
-            }
-            return Some(parse(input));
-        } else {
-            None
-        }
-    }
-}
-
-impl<'a> ParamList for Vec<Lit> {
-    fn try_parse(input: ParseStream) -> Option<syn::Result<Self>> {
-        if input.peek(Bracket) {
-            fn expr_to_lit(expr: &Expr) -> syn::Result<Lit> {
-                return if let Expr::Lit(lit) = expr {
-                    Ok(lit.lit.clone())
-                } else {
-                    Err(syn::Error::new(expr.span(), "Expression is not a literal"))
-                };
-            }
-            fn parse(input: ParseStream) -> syn::Result<Vec<Lit>> {
-                let exprs = input.parse::<syn::ExprArray>()?;
-                let entries: syn::Result<Vec<Lit>> = exprs.elems.iter().map(expr_to_lit).collect();
-                Ok(entries?)
-            }
-            return Some(parse(input));
-        } else {
-            None
+            Param::Type(ty) => type_ident_safe(ty),
+            Param::Lit(lit) => lit_ident_safe(lit),
         }
     }
 }
