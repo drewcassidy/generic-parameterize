@@ -9,7 +9,7 @@ use quote::ToTokens;
 use std::fmt::{Display, Formatter};
 use syn::{Expr, Lit, Type};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum Param {
     Type(Type),
     Lit(Lit),
