@@ -16,7 +16,7 @@ use syn::{Expr, GenericParam, Lit, LitStr, Type};
 
 use crate::params::Param;
 
-/// One argument in the input to the parameterize macro
+/// The value of an [`Argument`]; everything after the equal sign
 #[derive(Clone, Debug)]
 pub(crate) enum ArgumentValue {
     TypeList(Vec<Type>),
@@ -24,88 +24,77 @@ pub(crate) enum ArgumentValue {
     Str(String),
 }
 
+/// One argument in the input to the parameterize macro
 #[derive(Clone, Debug)]
 pub(crate) struct Argument {
     pub ident: Ident,
     pub value: ArgumentValue,
 }
 
-fn parse_typelist(input: ParseStream) -> Option<syn::Result<Argument>> {
-    let ident = input.parse::<Ident>().ok()?;
-    input.parse::<syn::token::Eq>().ok()?;
-    if input.peek(syn::token::Paren) {
-        // everything after this point is an error instead of a no-match when it fails
-        let parse = || -> syn::Result<Argument> {
-            let tt = input.parse::<syn::TypeTuple>()?;
-            let entries: Vec<Type> = tt.elems.iter().cloned().collect();
-            Ok(Argument {
-                ident,
-                value: ArgumentValue::TypeList(entries),
-            })
-        };
-        Some(parse())
-    } else {
-        None
-    }
-}
-
-fn parse_litlist(input: ParseStream) -> Option<syn::Result<Argument>> {
-    let ident = input.parse::<Ident>().ok()?;
-    input.parse::<syn::token::Eq>().ok()?;
-    if input.peek(syn::token::Bracket) {
-        // everything after this point is an error instead of a no-match when it fails
-        let parse = || -> syn::Result<Argument> {
-            let exprs = input.parse::<syn::ExprArray>()?;
-            let entries: syn::Result<Vec<Lit>> = exprs
-                .elems
-                .iter()
-                .map(|expr: &Expr| -> syn::Result<Lit> {
-                    return if let Expr::Lit(lit) = expr {
-                        Ok(lit.lit.clone())
-                    } else {
-                        Err(syn::Error::new(expr.span(), "Expression is not a literal"))
-                    };
-                })
-                .collect();
-            Ok(Argument {
-                ident,
-                value: ArgumentValue::LitList(entries?),
-            })
-        };
-
-        Some(parse())
-    } else {
-        None
-    }
-}
-
-fn parse_str(input: ParseStream) -> Option<syn::Result<Argument>> {
-    let ident = input.parse::<Ident>().ok()?;
-    input.parse::<syn::token::Eq>().ok()?;
-
-    // everything after this point is an error instead of a no-match when it fails
-
-    let parse = || -> syn::Result<Argument> {
-        let value = input.parse::<LitStr>()?.value();
-
-        Ok(Argument {
-            ident,
-            value: ArgumentValue::Str(value),
-        })
+/// Parse a parenthesized list of types
+fn parse_typelist(input: ParseStream) -> Option<syn::Result<ArgumentValue>> {
+    let parse = || {
+        let tt = input.parse::<syn::TypeTuple>()?;
+        let entries: Vec<Type> = tt.elems.iter().cloned().collect();
+        Ok(ArgumentValue::TypeList(entries))
     };
 
-    Some(parse())
+    // match on parentheses. Anything invalid after is an error
+    input.peek(syn::token::Paren).then_some(parse())
+}
+
+/// Parse a bracketed list of literals
+fn parse_litlist(input: ParseStream) -> Option<syn::Result<ArgumentValue>> {
+    let parse = || {
+        let exprs = input.parse::<syn::ExprArray>()?;
+        let entries: syn::Result<Vec<Lit>> = exprs
+            .elems
+            .iter()
+            .map(|expr: &Expr| -> syn::Result<Lit> {
+                return if let Expr::Lit(lit) = expr {
+                    Ok(lit.lit.clone())
+                } else {
+                    Err(syn::Error::new(expr.span(), "Expression is not a literal"))
+                };
+            })
+            .collect();
+        Ok(ArgumentValue::LitList(entries?))
+    };
+
+    // match on brackets. anything invalid after is an error
+    input.peek(syn::token::Bracket).then_some(parse())
+}
+
+/// Parse a string argument
+fn parse_str(input: ParseStream) -> Option<syn::Result<ArgumentValue>> {
+    // no way for a string argument parse to fail, it either matches or it doesnt
+    input
+        .parse::<LitStr>()
+        .ok()
+        .map(|lit| Ok(ArgumentValue::Str(lit.value())))
 }
 
 impl Parse for Argument {
     fn parse(input: ParseStream) -> syn::Result<Self> {
+        // parse the ident and equals sign
+        let ident = input.parse::<Ident>()?;
+        input.parse::<syn::token::Eq>()?;
+
+        // iterate over the known parse functions for arguments
         [parse_typelist, parse_litlist, parse_str]
             .iter()
             .find_map(|f| {
+                // fork the buffer, so we can rewind if there isnt a match
                 let fork = input.fork();
-                if let Some(arg) = (*f)(&fork) {
+
+                // if the parse function returns a match, return a syn::Result<Argument>,
+                // otherwise None to advance to the next parse function
+                if let Some(value) = (*f)(&fork) {
                     input.advance_to(&fork);
-                    Some(arg)
+                    Some(value.map(|v| Self {
+                        ident: ident.clone(),
+                        value: v,
+                    }))
                 } else {
                     None
                 }
@@ -115,30 +104,14 @@ impl Parse for Argument {
 }
 
 impl Argument {
-    pub fn short_name(&self) -> &str {
+    /// Get a user-friendly name for the type of argument this is
+    pub fn short_type(&self) -> &str {
         match self.value {
             ArgumentValue::TypeList(_) => "type list",
             ArgumentValue::LitList(_) => "const list",
             ArgumentValue::Str(_) => "string",
         }
     }
-    // pub fn match_paramlist(&self, gp: &GenericParam) -> Option<syn::Result<Vec<(Ident, Param)>>> {
-    //     match (&self.ident, &self.value, gp) {
-    //         (id, ArgumentValue::TypeList(tl), GenericParam::Type(tp)) if id == &tp.ident => Some(
-    //             tl.iter()
-    //                 .map(|ty| (id.clone(), Param::Type(ty.clone())))
-    //                 .collect(),
-    //         ),
-    //
-    //         (id, ArgumentValue::LitList(ll), GenericParam::Const(cp)) if id == &cp.ident => Some(
-    //             ll.iter()
-    //                 .map(|lit| (id.clone(), Param::Lit(lit.clone())))
-    //                 .collect(),
-    //         ),
-    //
-    //         _ => None,
-    //     }
-    // }
 }
 
 /// A list of arguments input to the macro
@@ -172,6 +145,9 @@ impl Extract for ArgumentList {
 }
 
 impl ArgumentList {
+    /// consume a paramlist from the argument list that matches the given generic parameter
+    /// and return it.
+    /// Returns an error if there is a type mismatch, or if there is not exactly one match
     pub fn consume_paramlist(&mut self, gp: &GenericParam) -> syn::Result<Vec<(Ident, Param)>> {
         let (g_ident, g_name) = match gp {
             GenericParam::Lifetime(lt) => Err(syn::Error::new(
@@ -196,9 +172,9 @@ impl ArgumentList {
                     ),
                     (ArgumentValue::TypeList(_), _) | (ArgumentValue::LitList(_), _) => Some(Err(syn::Error::new(
                         arg.ident.span(),
-                        format!("Mismatched parameterization: Expected {} list but found {}", g_name, arg.short_name()),
+                        format!("Mismatched parameterization: Expected {} list but found {}", g_name, arg.short_type()),
                     ))),
-                    /* fall through, in case theres a generic argument named for example "fmt". there probably shouldn't be though*/
+                    /* fall through, in case theres a generic argument named for example "fmt". there probably shouldn't be though */
                     (_, _) => None }
             } else {
                 None
