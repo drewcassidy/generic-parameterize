@@ -21,7 +21,6 @@ use crate::params::Param;
 
 mod arguments;
 mod extract;
-mod fmt;
 mod params;
 
 fn format_params(fmt: &Option<String>, fn_ident: &Ident, params: Vec<&(Ident, Param)>) -> Ident {
