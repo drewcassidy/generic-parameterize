@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file
 ### Fixed
 
 - Fixed missing documentation for `parameterize` macro
+- Updated github actions workflow to use newer versions of some dependencies and remove others.
 
 
 ## 0.2.1 - 2023-06-14
