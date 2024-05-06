@@ -6,27 +6,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout Repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
-
-      - name: Generate changelog info
+          python-version: '3.12'
         run: |
-          # todo: make this part of yaclog!
           pip install yaclog~=1.1
           yaclog show
-          echo "VERSION_TITLE=$(yaclog show -n)" >> $GITHUB_ENV
-          echo "$(yaclog show -mb)" >> /tmp/RELEASE.md
 
-      - name: Setup Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          components: rustfmt
+      - name: Rust setup
+        run: rustup toolchain install stable --profile minimal --component rustfmt
 
       - name: Run Checks
         run: |
@@ -37,14 +28,17 @@ jobs:
         run: cargo test
 
       - name: Publish to Crates.io
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
-        run: cargo publish --token ${{ secrets.CARGO_TOKEN }}
+        if: github.event_name == 'push')
+        run: |
+          cargo publish \
+            --token ${{ secrets.CARGO_TOKEN }} \
+            ${{ github.ref_type != 'tag' && '--dry-run' || '' }}
 
       - name: Publish to Github
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
-        uses: softprops/action-gh-release@v1
-        with:
-          name: Version ${{ env.VERSION_TITLE }}
-          body_path: /tmp/RELEASE.md
+        if: github.event_name == 'push' && github.ref_type == 'tag)
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --notes "$(yaclog show -mb)" \
+            --title "Version $(yaclog show -n)"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
