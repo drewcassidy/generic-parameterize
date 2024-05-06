@@ -38,66 +38,6 @@ fn format_params(fmt: &Option<String>, fn_ident: &Ident, params: Vec<&(Ident, Pa
     }
 }
 
-/// Expand a generic test function with the given parameter matrix
-///
-///
-/// # Arguments
-/// Arguments are provided in the [_MetaListNameValueStr_][mlnvs] format. Every argument consists
-/// of an identifier, an equals sign, and a value. Arguments are seperated by commas.
-///
-/// ## Type Lists
-/// Type lists are passed using the tuple syntax. There must be exactly one type list argument for every
-/// generic type parameter in the target function
-///
-/// ## Const Lists
-/// Const lists are passed using the array syntax, however expressions are not allowed, only literals.
-/// There must be exactly one const list argument for every generic const parameter in the target function
-///
-/// ## Format String
-/// An optional format string can be passed with the ident `fmt`. This uses a syntax similar to [`format!`](std::format),
-/// however the colon and everything after it is not supported; only the identifier for each
-/// parameter and `fn` for the name of the target function
-///
-///
-/// # Examples
-///
-/// ```
-/// # #[cfg(test)]
-/// # mod array_tests {
-/// # use std::println; // clion thinks this is an error not to include??
-/// use generic_parameterize::parameterize;
-/// use std::fmt::Debug;
-///
-/// #[parameterize(T = (i32, f32), N = [4,5,6], fmt = "{fn}_{T}x{N}")]
-/// #[test]
-/// fn test_array<T: Default, const N : usize>() where [T;N]: Default + Debug{
-///     let foo: [T;N] = Default::default();
-///     println!("{:?}", foo)
-/// }
-/// # }
-/// ```
-///
-/// expands to:
-///
-/// ```ignore
-/// mod test_array {
-///     use std::println;
-///     fn test_array<T: Default, const N : usize>() where [T;N]: Default + std::fmt::Debug{
-///         let foo: [T;N] = Default::default();
-///         println!("{:?}", foo)
-///     }
-///
-///     #[test]
-///     fn test_array_i32x4() {test_array::<i32,4>();}
-///     #[test]
-///     fn test_array_f32x4() {test_array::<f32,4>();}
-///     #[test]
-///     fn test_array_i32x5() {test_array::<i32,5>();}
-///     // etc...
-/// }
-/// ```
-///
-/// [mlnvs]: https://doc.rust-lang.org/reference/attributes.html#meta-item-attribute-syntax
 fn parameterize_impl(mut args: ArgumentList, mut inner: ItemFn) -> syn::Result<TokenStream> {
     let inner_ident = inner.sig.ident.clone();
     let output = inner.sig.output.clone();
@@ -188,6 +128,67 @@ fn parameterize_impl(mut args: ArgumentList, mut inner: ItemFn) -> syn::Result<T
     Ok(module.into_token_stream().into())
 }
 
+/// Expand a generic test function with the given parameter matrix
+///
+///
+/// # Arguments
+/// Arguments are provided in the [_MetaListNameValueStr_][mlnvs] format. Every argument consists
+/// of an identifier, an equals sign, and a value. Arguments are seperated by commas.
+///
+/// ## Type Lists
+/// Type lists are passed using the tuple syntax. There must be exactly one type list argument for every
+/// generic type parameter in the target function
+///
+/// ## Const Lists
+/// Const lists are passed using the array syntax, however expressions are not allowed, only literals.
+/// There must be exactly one const list argument for every generic const parameter in the target function
+///
+/// ## Format String
+/// An optional format string can be passed with the ident `fmt`. This uses a syntax similar to [`format!`](std::format),
+/// however the colon and everything after it is not supported; only the identifier for each
+/// parameter and `fn` for the name of the target function
+///
+///
+/// # Examples
+///
+/// ```
+/// # #[cfg(test)]
+/// # mod array_tests {
+/// # use super::*;
+/// use generic_parameterize::parameterize;
+/// use std::fmt::Debug;
+///
+/// #[parameterize(T = (i32, f32), N = [4,5,6], fmt = "{fn}_{T}x{N}")]
+/// #[test]
+/// fn test_array<T: Default, const N : usize>() where [T;N]: Default + Debug{
+///     let foo: [T;N] = Default::default();
+///     println!("{:?}", foo)
+/// }
+/// # }
+/// ```
+///
+/// expands to:
+///
+/// ```
+/// mod test_array {
+///     use super::*;
+///
+///     fn test_array<T: Default, const N : usize>() where [T;N]: Default + std::fmt::Debug{
+///         let foo: [T;N] = Default::default();
+///         println!("{:?}", foo)
+///     }
+///
+///     #[test]
+///     fn test_array_i32x4() {test_array::<i32,4>();}
+///     #[test]
+///     fn test_array_f32x4() {test_array::<f32,4>();}
+///     #[test]
+///     fn test_array_i32x5() {test_array::<i32,5>();}
+///     // etc...
+/// }
+/// ```
+///
+/// [mlnvs]: https://doc.rust-lang.org/reference/attributes.html#meta-item-attribute-syntax
 #[proc_macro_attribute]
 pub fn parameterize(args: TokenStream, input: TokenStream) -> TokenStream {
     let inner = parse_macro_input!(input as syn::ItemFn);

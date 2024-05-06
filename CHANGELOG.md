@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file
 
+## Unreleased
+
+### Fixed
+
+- Fixed missing documentation for `parameterize` macro
+
+
 ## 0.2.1 - 2023-06-14
 
 ### Removed
