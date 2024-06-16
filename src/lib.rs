@@ -53,7 +53,14 @@ fn parameterize_impl(mut args: ArgumentList, mut inner: ItemFn) -> syn::Result<T
         .generics
         .params
         .iter()
-        .map(|gp| args.consume_paramlist(gp))
+        .map(|gp| args.consume_generic_paramlist(gp))
+        .collect::<syn::Result<_>>()?;
+
+    let arg_lists: Vec<_> = inner
+        .sig
+        .inputs
+        .iter()
+        .map(|ident| args.consume_arg_paramlist(ident))
         .collect::<syn::Result<_>>()?;
 
     // Consume format string argument
@@ -80,13 +87,29 @@ fn parameterize_impl(mut args: ArgumentList, mut inner: ItemFn) -> syn::Result<T
     // iterate over them, and map them to wrapper functions
     let (wrapper_idents, wrappers): (Vec<_>, Vec<_>) = param_lists
         .iter()
+        .chain(arg_lists.iter())
         .multi_cartesian_product()
         .map(|params| {
-            let param_values = params.iter().map(|(_, p)| p).collect_vec();
+            let generic_param_values = params
+                .iter()
+                .filter_map(|(_, p)| match p {
+                    Param::FnArg(_) => None,
+                    _ => Some(p),
+                })
+                .collect_vec();
+
+            let arg_values = params
+                .iter()
+                .filter_map(|(_, p)| match p {
+                    Param::FnArg(arg) => Some(arg),
+                    _ => None,
+                })
+                .collect_vec();
 
             // let fn_ident = format_ident!("{}_{}", inner.sig.ident, param_values.iter().join("_"));
             let fn_ident = format_params(&fmt_string, &inner_ident, params);
-            let fn_body: Expr = syn::parse_quote!(#inner_ident::<#(#param_values,)*>());
+            let fn_body: Expr =
+                syn::parse_quote!(#inner_ident::<#(#generic_param_values,)*>(#(#arg_values,)*));
             let fn_doc = format!(" Wrapper for {}", fn_body.to_token_stream());
             let mut func: ItemFn = syn::parse_quote! {
                 #[allow(non_snake_case)]
@@ -196,8 +219,5 @@ pub fn parameterize(args: TokenStream, input: TokenStream) -> TokenStream {
     let inner = parse_macro_input!(input as syn::ItemFn);
     let args = parse_macro_input!(args as ArgumentList);
 
-    match parameterize_impl(args, inner) {
-        Ok(output) => output,
-        Err(err) => err.to_compile_error().into(),
-    }
+    parameterize_impl(args, inner).unwrap_or_else(|err| err.to_compile_error().into())
 }

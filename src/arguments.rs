@@ -7,20 +7,22 @@
 use crate::extract::{Extract, ExtractIterator, ExtractMap};
 use itertools::Itertools;
 use proc_macro2::{Ident, Span};
+use std::fmt::Debug;
 use syn::parse::discouraged::Speculative;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Comma;
-use syn::{Expr, GenericParam, Lit, LitStr, Type};
+use syn::{Expr, ExprLit, FnArg, GenericParam, Lit, LitStr, Pat, Type};
 
-use crate::params::Param;
+use crate::params::{Param, ParamType};
 
 /// The value of an [`Argument`]; everything after the equal sign
 #[derive(Clone, Debug)]
 pub(crate) enum ArgumentValue {
     TypeList(Vec<Type>),
     LitList(Vec<Lit>),
+    ExprList(Vec<Expr>),
     Str(String),
 }
 
@@ -45,20 +47,31 @@ fn parse_typelist(input: ParseStream) -> Option<syn::Result<ArgumentValue>> {
 
 /// Parse a bracketed list of literals
 fn parse_litlist(input: ParseStream) -> Option<syn::Result<ArgumentValue>> {
-    let parse = || {
-        let exprs = input.parse::<syn::ExprArray>()?;
-        let entries: syn::Result<Vec<Lit>> = exprs
+    // match on brackets. anything invalid after is an error
+    return if input.peek(syn::token::Bracket) {
+        let exprs = input.parse::<syn::ExprArray>().ok()?;
+        let entries: Option<Vec<Lit>> = exprs
             .elems
             .iter()
-            .map(|expr: &Expr| -> syn::Result<Lit> {
-                return if let Expr::Lit(lit) = expr {
-                    Ok(lit.lit.clone())
+            .map(|expr: &Expr| -> Option<Lit> {
+                if let Expr::Lit(lit) = expr {
+                    Some(lit.lit.clone())
                 } else {
-                    Err(syn::Error::new(expr.span(), "Expression is not a literal"))
-                };
+                    None
+                }
             })
             .collect();
-        Ok(ArgumentValue::LitList(entries?))
+        Some(Ok(ArgumentValue::LitList(entries?)))
+    } else {
+        None
+    };
+}
+
+fn parse_exprlist(input: ParseStream) -> Option<syn::Result<ArgumentValue>> {
+    let parse = || {
+        let exprs = input.parse::<syn::ExprArray>()?;
+        let entries = exprs.elems.iter().cloned().collect_vec();
+        Ok(ArgumentValue::ExprList(entries))
     };
 
     // match on brackets. anything invalid after is an error
@@ -81,7 +94,7 @@ impl Parse for Argument {
         input.parse::<syn::token::Eq>()?;
 
         // iterate over the known parse functions for arguments
-        [parse_typelist, parse_litlist, parse_str]
+        [parse_typelist, parse_litlist, parse_exprlist, parse_str]
             .iter()
             .find_map(|f| {
                 // fork the buffer, so we can rewind if there isnt a match
@@ -110,6 +123,7 @@ impl Argument {
             ArgumentValue::TypeList(_) => "type list",
             ArgumentValue::LitList(_) => "const list",
             ArgumentValue::Str(_) => "string",
+            ArgumentValue::ExprList(_) => "expression list",
         }
     }
 }
@@ -145,50 +159,96 @@ impl Extract for ArgumentList {
 }
 
 impl ArgumentList {
-    /// consume a paramlist from the argument list that matches the given generic parameter
-    /// and return it.
-    /// Returns an error if there is a type mismatch, or if there is not exactly one match
-    pub fn consume_paramlist(&mut self, gp: &GenericParam) -> syn::Result<Vec<(Ident, Param)>> {
-        let (g_ident, g_name) = match gp {
-            GenericParam::Lifetime(lt) => Err(syn::Error::new(
-                lt.span(),
-                "Parameterizing lifetimes is not supported",
-            )),
-            GenericParam::Type(t) => Ok((&t.ident, "type")),
-            GenericParam::Const(c) => Ok((&c.ident, "const")),
-        }?;
+    fn consume_paramlist(
+        &mut self,
+        ident: &Ident,
+        ty: &ParamType,
+    ) -> syn::Result<Vec<(Ident, Param)>> {
         self.extract_map(|arg| -> Option<syn::Result<Vec<(Ident, Param)>>> {
-            return if &arg.ident == g_ident {
-                match (&arg.value, gp) {
-                    (ArgumentValue::TypeList(tl), GenericParam::Type(_)) => Some(
+            return if &arg.ident == ident {
+                match (&arg.value, ty) {
+                    (ArgumentValue::TypeList(tl), ParamType::GenericType) => Some(
                         Ok(tl.iter()
-                            .map(|ty| (arg.ident.clone(), Param::Type(ty.clone())))
+                            .map(|ty| (arg.ident.clone(), Param::GenericType(ty.clone())))
                             .collect()),
                     ),
-                    (ArgumentValue::LitList(ll), GenericParam::Const(_)) => Some(
+                    (ArgumentValue::LitList(ll), ParamType::GenericConst) => Some(
                         Ok(ll.iter()
-                            .map(|lit| (arg.ident.clone(), Param::Lit(lit.clone())))
+                            .map(|lit| (arg.ident.clone(), Param::GenericConst(lit.clone())))
+                            .collect()),
+                    ),
+                    (ArgumentValue::LitList(ll), ParamType::FnArg) => Some(
+                        Ok(ll.iter()
+                            .map(|lit| (arg.ident.clone(), Param::FnArg(
+                                Expr::Lit (ExprLit{ attrs: vec![], lit: lit.clone() }))))
+                            .collect()),
+                    ),
+                    (ArgumentValue::ExprList(el), ParamType::FnArg) => Some(
+                        Ok(el.iter()
+                            .map(|e| (arg.ident.clone(), Param::FnArg(e.clone())))
                             .collect()),
                     ),
                     (ArgumentValue::TypeList(_), _) | (ArgumentValue::LitList(_), _) => Some(Err(syn::Error::new(
                         arg.ident.span(),
-                        format!("Mismatched parameterization: Expected {} list but found {}", g_name, arg.short_type()),
+                        format!("Mismatched parameterization: Expected {} list but found {}", ty, arg.short_type()),
                     ))),
                     /* fall through, in case theres a generic argument named for example "fmt". there probably shouldn't be though */
-                    (_, _) => None }
+                    (_, _) => None
+                }
             } else {
                 None
             }
         })
-        .at_most_one()
-        .map_err(|_| {
-            // more than one match
-            syn::Error::new(
-                Span::call_site(),
-                format!("Multiple {g_name} parameterizations provided for `{g_ident}`"),
-            )
-        })?
-        .ok_or(syn::Error::new(Span::call_site(), format!("No {g_name} parameterization provided for `{g_ident}`")))?
+            .at_most_one()
+            .map_err(|_| {
+                // more than one match
+                syn::Error::new(
+                    Span::call_site(),
+                    format!("Multiple {ty} parameterizations provided for `{ident}`"),
+                )
+            })?
+            .ok_or(syn::Error::new(Span::call_site(), format!("No {ty} parameterization provided for `{ident}`")))?
         // no matches
+    }
+    /// consume a paramlist from the argument list that matches the given generic parameter
+    /// and return it.
+    /// Returns an error if there is a type mismatch, or if there is not exactly one match
+    pub fn consume_generic_paramlist(
+        &mut self,
+        gp: &GenericParam,
+    ) -> syn::Result<Vec<(Ident, Param)>> {
+        let (ident, ty) = match gp {
+            GenericParam::Lifetime(lt) => Err(syn::Error::new(
+                lt.span(),
+                "Parameterizing lifetimes is not supported",
+            )),
+            GenericParam::Type(t) => Ok((&t.ident, ParamType::GenericType)),
+            GenericParam::Const(c) => Ok((&c.ident, ParamType::GenericConst)),
+        }?;
+        self.consume_paramlist(ident, &ty)
+    }
+
+    /// consume a paramlist from the argument list that matches the given function argument and return it.
+    /// Returns an error if there is not exactly one match
+    pub fn consume_arg_paramlist(&mut self, arg: &FnArg) -> syn::Result<Vec<(Ident, Param)>> {
+        let pat = match arg {
+            FnArg::Receiver(_) => {
+                return Err(syn::Error::new(
+                    arg.span(),
+                    "self arguments are not supported",
+                ))
+            }
+            FnArg::Typed(pat) => *(pat.clone().pat),
+        };
+        let ident = match pat {
+            Pat::Ident(pat_ident) => pat_ident.ident,
+            _ => {
+                return Err(syn::Error::new(
+                    pat.span(),
+                    "function arguments must be an identity pattern",
+                ))
+            }
+        };
+        self.consume_paramlist(&ident, &ParamType::FnArg)
     }
 }

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file
 
+## Unreleased
+
+### Added
+
+- added support for parameterizing function arguments
+
+### Changed
+
+- updated to rust 2021 edition
+
+
 ## 0.2.2 - 2024-05-06
 
 ### Fixed

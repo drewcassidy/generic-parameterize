@@ -7,19 +7,35 @@
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::fmt::{Display, Formatter};
+use std::hash::{DefaultHasher, Hash, Hasher};
+use strum::EnumDiscriminants;
 use syn::{Expr, Lit, Type};
 
-#[derive(Clone, Debug)]
+/// A Param is a value we are parameterizing over. It can be a type or a literal
+#[derive(Clone, Debug, EnumDiscriminants)]
+#[strum_discriminants(name(ParamType))]
 pub(crate) enum Param {
-    Type(Type),
-    Lit(Lit),
+    GenericType(Type),
+    GenericConst(Lit),
+    FnArg(Expr),
+}
+
+impl Display for ParamType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParamType::GenericType => f.write_str("type generic"),
+            ParamType::GenericConst => f.write_str("const generic"),
+            ParamType::FnArg => f.write_str("argument"),
+        }
+    }
 }
 
 impl ToTokens for Param {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
-            Param::Type(ty) => ty.to_tokens(tokens),
-            Param::Lit(lit) => lit.to_tokens(tokens),
+            Param::GenericType(ty) => ty.to_tokens(tokens),
+            Param::GenericConst(lit) => lit.to_tokens(tokens),
+            Param::FnArg(expr) => expr.to_tokens(tokens),
         }
     }
 }
@@ -30,10 +46,19 @@ impl Display for Param {
     }
 }
 
+fn calculate_hash<T: Hash>(t: &T) -> String {
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    let hex = format!("{:X}", s.finish());
+    return hex[0..4].to_string();
+}
+
 impl Param {
     fn ident_safe(&self) -> String {
         fn lit_ident_safe(lit: &Lit) -> String {
-            lit.to_token_stream().to_string().replace(".", "p")
+            let lit = lit.to_token_stream().to_string().replace(".", "p");
+            let lit = lit.replace("\"", "");
+            lit
         }
         fn type_ident_safe(ty: &Type) -> String {
             match ty {
@@ -64,8 +89,10 @@ impl Param {
             }
         }
         match self {
-            Param::Type(ty) => type_ident_safe(ty),
-            Param::Lit(lit) => lit_ident_safe(lit),
+            Param::GenericType(ty) => type_ident_safe(ty),
+            Param::GenericConst(lit) => lit_ident_safe(lit),
+            Param::FnArg(Expr::Lit(lit)) => lit_ident_safe(&lit.lit),
+            Param::FnArg(expr) => format!("expr{}", calculate_hash(expr)),
         }
     }
 }

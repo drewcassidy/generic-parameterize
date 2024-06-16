@@ -26,7 +26,7 @@ impl<T> Termination for Terminator<T> {
 /// Generates 6 parameterized tests using a matrix of types and constants
 #[parameterize(A = (i32, f32), B = [5, 6, 7], fmt = "{fn}_{B}ｘ{A}")]
 #[test]
-fn test_parameterization_matrix<A: 'static, const B: usize>() -> Terminator<(TypeId, usize)> {
+fn test_generic_matrix<A: 'static, const B: usize>() -> Terminator<(TypeId, usize)> {
     return Terminator {
         data: Box::new((TypeId::of::<A>(), B)),
     };
@@ -34,8 +34,8 @@ fn test_parameterization_matrix<A: 'static, const B: usize>() -> Terminator<(Typ
 
 /// Tests to make sure the previous test expanded to the correct subtests
 #[test]
-fn metatest_parameterization_matrix() {
-    let mut results: HashSet<_> = test_parameterization_matrix::manifest
+fn metatest_generic_matrix() {
+    let mut results: HashSet<_> = test_generic_matrix::manifest
         .iter()
         .map(|f| (*f)().data)
         .collect();
@@ -47,4 +47,35 @@ fn metatest_parameterization_matrix() {
     assert!(results.remove(&(TypeId::of::<f32>(), 5usize)));
     assert!(results.remove(&(TypeId::of::<f32>(), 6usize)));
     assert!(results.remove(&(TypeId::of::<f32>(), 7usize)));
+    assert_eq!(results.len(), 0);
+}
+
+/// Generates 2 parameterized tests that say hello and goodbye
+#[parameterize(msg=["hello", "goodbye"], n=[1,2,4-1], fmt = "{fn}_say_{msg}_{n}_times")]
+#[test]
+fn test_fn_matrix(msg: &'static str, n: usize) -> Terminator<(&'static str, usize)> {
+    for _ in 0..n {
+        println!("{}", msg);
+    }
+    return Terminator {
+        data: Box::new((msg, n)),
+    };
+}
+
+/// Tests to make sure the previous test expanded to the correct subtests
+#[test]
+fn metatest_fn_matrix() {
+    let mut results: HashSet<_> = test_fn_matrix::manifest
+        .iter()
+        .map(|f| (*f)().data)
+        .collect();
+
+    assert_eq!(results.len(), 6);
+    assert!(results.remove(&("hello", 1)));
+    assert!(results.remove(&("hello", 2)));
+    assert!(results.remove(&("hello", 3)));
+    assert!(results.remove(&("goodbye", 1)));
+    assert!(results.remove(&("goodbye", 2)));
+    assert!(results.remove(&("goodbye", 3)));
+    assert_eq!(results.len(), 0);
 }

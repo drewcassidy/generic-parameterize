@@ -17,4 +17,5 @@ quote = "1"
 proc-macro2 = "1.0.43"
 syn = { version = "2.0.17", features = ["full", "extra-traits"] }
 itertools = "0.13"
+strum = { version = "0.26.2", features = ["derive"] }
 
