@@ -35,10 +35,12 @@ fn format_params(fmt: &Option<String>, fn_ident: &Ident, params: Vec<&(Ident, Pa
 
         format_ident!("{}", result)
     } else {
+        // fallback format if one isnt given by the user
         format_ident!("{}_{}", fn_ident, params.iter().map(|(_, p)| p).join("_"))
     }
 }
 
+///internal implementation of [`parameterize`]
 fn parameterize_impl(mut args: ArgumentList, mut inner: ItemFn) -> syn::Result<TokenStream> {
     let inner_ident = inner.sig.ident.clone();
     let output = inner.sig.output.clone();
@@ -152,7 +154,7 @@ fn parameterize_impl(mut args: ArgumentList, mut inner: ItemFn) -> syn::Result<T
     Ok(module.into_token_stream().into())
 }
 
-/// Expand a generic test function with the given parameter matrix
+/// Expand a function with the given parameter matrix
 ///
 ///
 /// # Arguments
@@ -163,9 +165,12 @@ fn parameterize_impl(mut args: ArgumentList, mut inner: ItemFn) -> syn::Result<T
 /// Type lists are passed using the tuple syntax. There must be exactly one type list argument for every
 /// generic type parameter in the target function
 ///
-/// ## Const Lists
-/// Const lists are passed using the array syntax, however expressions are not allowed, only literals.
-/// There must be exactly one const list argument for every generic const parameter in the target function
+/// ## Literal and Expression Lists
+/// Literal and Expression lists are passed using the array syntax
+/// When parameterizing a generic const parameter, only literals can be used. When parameterizing a
+/// function argument, any expression can be used. However, since expressions cannot be evaluated at
+/// compile time, they will appear in the function name as a hash.
+/// There must be exactly one list argument for every generic const parameter or function argument in the target function
 ///
 /// ## Format String
 /// An optional format string can be passed with the ident `fmt`. This uses a syntax similar to [`format!`](std::format),

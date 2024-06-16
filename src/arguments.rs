@@ -159,6 +159,7 @@ impl Extract for ArgumentList {
 }
 
 impl ArgumentList {
+    /// Consume an argument matching a paramlist
     fn consume_paramlist(
         &mut self,
         ident: &Ident,

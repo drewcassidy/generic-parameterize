@@ -11,7 +11,8 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use strum::EnumDiscriminants;
 use syn::{Expr, Lit, Type};
 
-/// A Param is a value we are parameterizing over. It can be a type or a literal
+/// A Param is a value we are parameterizing over. It can be a generic type, a generic const,
+/// or a function argument
 #[derive(Clone, Debug, EnumDiscriminants)]
 #[strum_discriminants(name(ParamType))]
 pub(crate) enum Param {
