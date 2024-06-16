@@ -7,7 +7,7 @@ description = "A test parameterization macro that works on generic arguments"
 keywords = ["proc_macro", "test", "parameterize", "generic"]
 categories = ["development-tools::testing"]
 license = "MPL-2.0"
-edition = "2018"
+edition = "2021"
 
 [lib]
 proc-macro = true

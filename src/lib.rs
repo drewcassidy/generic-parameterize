@@ -4,7 +4,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-//! This crate provides the [parameterize] macro for expanding generic test functions
+//! This crate provides the [`parameterize`] macro, which allow parameterizing generic functions for
+//! applications like unit testing.
 
 use proc_macro::TokenStream;
 use Default;
@@ -155,8 +156,8 @@ fn parameterize_impl(mut args: ArgumentList, mut inner: ItemFn) -> syn::Result<T
 /// # #[cfg(test)]
 /// # mod array_tests {
 /// # use super::*;
+/// # use std::fmt::Debug;
 /// use generic_parameterize::parameterize;
-/// use std::fmt::Debug;
 ///
 /// #[parameterize(T = (i32, f32), N = [4,5,6], fmt = "{fn}_{T}x{N}")]
 /// #[test]
@@ -171,9 +172,10 @@ fn parameterize_impl(mut args: ArgumentList, mut inner: ItemFn) -> syn::Result<T
 ///
 /// ```
 /// mod test_array {
+///     # use std::fmt::Debug;
 ///     use super::*;
 ///
-///     fn test_array<T: Default, const N : usize>() where [T;N]: Default + std::fmt::Debug{
+///     fn test_array<T: Default, const N : usize>() where [T;N]: Default + Debug{
 ///         let foo: [T;N] = Default::default();
 ///         println!("{:?}", foo)
 ///     }
