@@ -7,6 +7,7 @@
 pub(crate) trait Extract {
     type Item;
     /// Removes all elements of `self` for which `f(&e)` returns `true`, and returns them as an iterator
+    #[allow(dead_code)]
     fn extract<F: FnMut(&Self::Item) -> bool>(&mut self, f: F) -> ExtractIterator<Self::Item, F>;
 
     fn extract_map<U, F: FnMut(&Self::Item) -> Option<U>>(
