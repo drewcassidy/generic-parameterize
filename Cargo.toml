@@ -1,6 +1,6 @@
 [package]
 name = "generic_parameterize"
-version = "0.2.2"
+version = "0.3.0"
 repository = "https://github.com/drewcassidy/generic-parameterize"
 authors = ["Andrew Cassidy <drewcassidy@me.com>"]
 description = "A test parameterization macro that works on generic arguments"
