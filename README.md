@@ -1,3 +1,6 @@
+> [!IMPORTANT] 
+> Migrated to https://git.offworldcolonies.nexus/drewcassidy/generic-parameterize
+
 Generic Parameterize
 ====================
 
